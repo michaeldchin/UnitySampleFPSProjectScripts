@@ -45,6 +45,8 @@ public class PlayerCharacterController : MonoBehaviour
     [Header("Jump")]
     [Tooltip("Force applied upward when jumping")]
     public float jumpForce = 9f;
+    [Tooltip("Max number of air jumps")]
+    public int maxMultiJumps = 0;
 
     [Header("Stance")]
     [Tooltip("Ratio (0-1) of the character height where the camera will be at")]
@@ -87,6 +89,7 @@ public class PlayerCharacterController : MonoBehaviour
     public Vector3 characterVelocity { get; set; }
     public bool isGrounded { get; private set; }
     public bool hasJumpedThisFrame { get; private set; }
+    public int airJumps { get; private set; }
     public bool isDead { get; private set; }
     public bool isCrouching { get; private set; }
     public float RotationMultiplier
@@ -161,6 +164,9 @@ public class PlayerCharacterController : MonoBehaviour
         // landing
         if (isGrounded && !wasGrounded)
         {
+            // Reset jumps
+            airJumps = 0;
+
             // Fall damage
             float fallSpeed = -Mathf.Min(characterVelocity.y, m_LatestImpactSpeed.y);
             float fallSpeedRatio = (fallSpeed - minSpeedForFallDamage) / (maxSpeedForFallDamage - minSpeedForFallDamage);
@@ -233,6 +239,26 @@ public class PlayerCharacterController : MonoBehaviour
         }
     }
 
+    private void jump()
+    {
+        // start by canceling out the vertical component of our velocity
+        characterVelocity = new Vector3(characterVelocity.x, 0f, characterVelocity.z);
+
+        // then, add the jumpSpeed value upwards
+        characterVelocity += Vector3.up * jumpForce;
+
+        // play sound
+        audioSource.PlayOneShot(jumpSFX);
+
+        // remember last time we jumped because we need to prevent snapping to ground for a short time
+        m_LastTimeJumped = Time.time;
+        hasJumpedThisFrame = true;
+
+        // Force grounding to false
+        isGrounded = false;
+        m_GroundNormal = Vector3.up;
+    }
+
     void HandleCharacterMovement()
     {
         // horizontal character rotation
@@ -285,22 +311,7 @@ public class PlayerCharacterController : MonoBehaviour
                     // force the crouch state to false
                     if (SetCrouchingState(false, false))
                     {
-                        // start by canceling out the vertical component of our velocity
-                        characterVelocity = new Vector3(characterVelocity.x, 0f, characterVelocity.z);
-
-                        // then, add the jumpSpeed value upwards
-                        characterVelocity += Vector3.up * jumpForce;
-
-                        // play sound
-                        audioSource.PlayOneShot(jumpSFX);
-
-                        // remember last time we jumped because we need to prevent snapping to ground for a short time
-                        m_LastTimeJumped = Time.time;
-                        hasJumpedThisFrame = true;
-
-                        // Force grounding to false
-                        isGrounded = false;
-                        m_GroundNormal = Vector3.up;
+                        jump();
                     }
                 }
 
@@ -318,6 +329,13 @@ public class PlayerCharacterController : MonoBehaviour
             // handle air movement
             else
             {
+                // air jumping
+                if (airJumps < maxMultiJumps && m_InputHandler.GetJumpInputDown())
+                {
+                    jump();
+                    airJumps++;
+                }
+
                 // add air acceleration
                 characterVelocity += worldspaceMoveInput * accelerationSpeedInAir * Time.deltaTime;
 
